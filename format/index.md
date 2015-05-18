@@ -788,44 +788,272 @@ An endpoint **MAY** also support an `include` request parameter to allow the
 client to customize which related resources should be returned.
 
 If an endpoint does not support the `include` parameter, it must respond with
-`400 Bad Request` to any requests that include it.
+`400 Bad Request` to any requests that use it.
 
 If an endpoint supports the `include` parameter and a client supplies it,
-the server **MUST NOT** include other resource objects in the `included`
-section of the compound document.
+the server **MUST NOT** place un-requested resource objects in the `included`
+section of the response.
 
 The value of the `include` parameter **MUST** be a comma-separated (U+002C
-COMMA, ",") list of relationship paths. A relationship path is a dot-separated
-(U+002E FULL-STOP, ".") list of relationship names. Each relationship name
-**MUST** be identical to the key in the `links` section of its parent
-resource object.
+COMMA, ",") list that refers to keys which would appear in the `relationships`
+section of a parent resource object if requested.
 
-> Note: For example, a relationship path could be `comments.author`, where
-`comments` is a relationship listed under a `articles` resource object, and
-`author` is a relationship listed under a `comments` resource object.
+Nested relations can be specified by providing a dot-separated
+(U+002E FULL-STOP, ".") "relationship path". Servers **MUST** only include the
+last node in these paths. If a client requires intermediate records, it
+**MUST** explicitly request them individually.
 
-For instance, comments could be requested with an article:
+For example, a client may retreive all books stocked by a bookstore, along with
+the authors of said books with the following:
 
 ```http
-GET /articles/1?include=comments
+GET /stores/2?include=books,books.author
 ```
 
-In order to request resources related to other resources, a dot-separated path
-for each relationship name can be specified:
-
-```http
-GET /articles/1?include=comments.author
+A compliant server **MUST** provide linkage between the two relationships
+as follows:
+```json
+{
+  "data": {
+    "type": "stores",
+    "id": "2",
+    "attributes": {
+      "name": "A full store"
+    },
+    "relationships": {
+      "books": {
+        "links": {
+          "self": "/stores/2/relationships/books",
+          "related": "/stores/2/books"
+        },
+        "data": [
+          { "type": "books", "id": "1" },
+          { "type": "books", "id": "2" }
+        ]
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "books",
+      "id": "1",
+      "attributes": {
+        "title": "The Fellowship of the Ring",
+        "date_published": "1954-07-29"
+      },
+      "relationships": {
+        "author": {
+          "links": {
+            "self": "/books/1/relationships/author",
+            "related": "/books/1/author"
+          },
+          "data": {
+            "type": "authors",
+            "id": "1"  
+          }
+        }
+      }
+    },
+    {
+      "type": "books",
+      "id": "2",
+      "attributes": {
+        "title": "Harry Potter and the Philosopher's Stone",
+        "date_published": "1997-06-26"
+      },
+      "relationships": {
+        "author": {
+          "links": {
+            "self": "/books/2/relationships/author",
+            "related": "/books/2/author"
+          },
+          "data": {
+            "type": "authors",
+            "id": "2"  
+          }
+        }
+      }
+    },
+    {
+      "type": "authors",
+      "id": "1",
+      "attributes": {
+        "name": "J. R. R. Tolkien",
+        "date_of_birth": "1892-01-03",
+        "date_of_death": "1973-09-02"
+      },
+      "relationships": {
+        "books": {
+          "links": {
+            "self": "/authors/1/relationships/books",
+            "related": "/authors/1/books"
+          },
+          "data": [
+            { "type": "books", "id": "1" },
+            { "type": "books", "id": "2" }
+          ]
+        }
+      }
+    },
+    {
+      "type": "authors",
+      "id": "2",
+      "attributes": {
+        "name": "J. K. Rowling",
+        "date_of_birth": "1965-07-31",
+        "date_of_death": null
+      },
+      "relationships": {
+        "books": {
+          "links": {
+            "self": "/authors/2/relationships/books",
+            "related": "/authors/2/books"
+          },
+          "data": [
+            { "type": "books", "id": "1" }
+          ]
+        }
+      }
+    }
+  ]
+}
 ```
 
-> Note: A request for `comments.author` should not automatically also
-include `comments` in the response. This can happen if the client already
-has the `comments` locally, and now wants to fetch the associated authors
-without fetching the comments again.
+If a client wished to request only the authors a store stocked, it could do
+so thusly:
+```http
+GET /stores/2?include=books.authors
+```
 
-Multiple related resources can be requested in a comma-separated list:
+```json
+{
+  "data": {
+    "type": "stores",
+    "id": "2",
+    "attributes": {
+      "name": "A full store"
+    },
+    "relationships": {
+      "books": {
+        "links": {
+          "self": "/stores/2/relationships/books",
+          "related": "/stores/2/books"
+        }
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "authors",
+      "id": "1",
+      "attributes": {
+        "name": "J. R. R. Tolkien",
+        "date_of_birth": "1892-01-03",
+        "date_of_death": "1973-09-02"
+      },
+      "relationships": {
+        "books": {
+          "links": {
+            "self": "/authors/1/relationships/books",
+            "related": "/authors/1/books"
+          }
+        }
+      }
+    },
+    {
+      "type": "authors",
+      "id": "2",
+      "attributes": {
+        "name": "J. K. Rowling",
+        "date_of_birth": "1965-07-31",
+        "date_of_death": null
+      },
+      "relationships": {
+        "books": {
+          "links": {
+            "self": "/authors/2/relationships/books",
+            "related": "/authors/2/books"
+          }
+        }
+      }
+    }
+  ]
+}
+```
+
+In this scenario, the intermediate books are not included, and thus no linkage
+back to the store is provided. If direct linkage is desirable for populating a
+client-side identity map, servers should implement an "aliased" relation that
+maps to the internal relationship path.
 
 ```http
-GET /articles/1?include=author,comments,comments.author
+GET /stores/2?include=authors
+```
+
+```json
+{
+  "data": {
+    "type": "stores",
+    "id": "2",
+    "attributes": {
+      "name": "A full store"
+    },
+    "relationships": {
+      "books": {
+        "links": {
+          "self": "/stores/2/relationships/books",
+          "related": "/stores/2/books"
+        }
+      },
+      "authors": {
+        "links": {
+          "self": "/stores/2/relationships/authors",
+          "related": "/stores/2/authors"
+        },
+        "data": [
+          { "type": "authors", "id": "1" },
+          { "type": "authors", "id": "2" }
+        ]
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "authors",
+      "id": "1",
+      "attributes": {
+        "name": "J. R. R. Tolkien",
+        "date_of_birth": "1892-01-03",
+        "date_of_death": "1973-09-02"
+      },
+      "relationships": {
+        "books": {
+          "links": {
+            "self": "/authors/1/relationships/books",
+            "related": "/authors/1/books"
+          }
+        }
+      }
+    },
+    {
+      "type": "authors",
+      "id": "2",
+      "attributes": {
+        "name": "J. K. Rowling",
+        "date_of_birth": "1965-07-31",
+        "date_of_death": null
+      },
+      "relationships": {
+        "books": {
+          "links": {
+            "self": "/authors/2/relationships/books",
+            "related": "/authors/2/books"
+          }
+        }
+      }
+    }
+  ]
+}
 ```
 
 ### Sparse Fieldsets <a href="#fetching-sparse-fieldsets" id="fetching-sparse-fieldsets" class="headerlink"></a>
@@ -1100,7 +1328,7 @@ create a resource with a client-generated ID that already exists.
 A server **MUST** return `409 Conflict` when processing a `POST` request in
 which the resource's `type` does not match the server's endpoint.
 
-A server **SHOULD** include error details and provide enough information to 
+A server **SHOULD** include error details and provide enough information to
 recognize the source of the conflict.
 
 ##### Other Responses <a href="#crud-creating-responses-other" id="crud-creating-responses-other" class="headerlink"></a>
@@ -1272,7 +1500,7 @@ constraints (such as a uniqueness constraint on a property other than `id`).
 A server **MUST** return `409 Conflict` when processing a `PATCH` request in
 which the resource's `type` and `id` do not match the server's endpoint.
 
-A server **SHOULD** include error details and provide enough information to 
+A server **SHOULD** include error details and provide enough information to
 recognize the source of the conflict.
 
 ##### Other Responses <a href="#crud-updating-responses-other" id="crud-updating-responses-other" class="headerlink"></a>
