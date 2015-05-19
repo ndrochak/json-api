@@ -192,7 +192,7 @@ the client and represents a new resource to be created on the server.
 In addition, a resource object **MAY** contain any of these top-level members:
 
 * `"attributes"`: an "attributes object" representing some of the resource's data.
-* `"relationships": a "relationships object" describing relationships between
+* `"relationships"`: a "relationships object" describing relationships between
  the resource and other JSON API resources.
 * `"links"`: a "links object" containing URLs related to the resource.
 * `"meta"`: non-standard meta-information about a resource that can not be
@@ -238,7 +238,7 @@ may contain any valid JSON value.
 Although has-one foreign keys (e.g. `author_id`) are often stored internally
 alongside other information to be represented in a resource object, these keys
 **SHOULD NOT** appear as attributes. If relations are provided, they **MUST**
-be represented under the "links object".
+be represented as [relationships].
 
 #### Fields <a href="#document-structure-resource-object-fields" id="document-structure-resource-object-fields" class="headerlink"></a>
 
@@ -270,21 +270,18 @@ consistently throughout an implementation.
 Each resource object **MUST** contain an `id` member, whose value **MUST**
 be a string.
 
-#### Relationships <a href="#document-structure-links" id="document-structure-resource-objects-relationships" class="headerlink"></a>
+#### Relationships Object <a href="#document-structure-links" id="document-structure-resource-objects-relationships" class="headerlink"></a>
 
 The value of the `"relationships"` key is a JSON object (a "relationships object")
-that represents references from the resource in whose resource object it's defined
-to other resources ("relationships"). These relationships share a namespace with
-[attributes]; that is, relationships of a given resource object **MUST** be named
-differently than its [attributes].
+that represents [relationships] to other resource objects.
 
-The keys `"id"` and `"type"` are not allowed within the relationships object.
+The top level of this object shares a namespace with the members of `attributes`
+and **MUST NOT** contain `id` or `type` members. Apart from these restrictions,
+this object can contain members keyed by any string valid for this specification.
 
-Relationships may be to-one or to-many. Relationships can be specified by
-including a member in a resource's relationship's object. The name of the
-relationship is its key in the relationship object.
+#### Relationships <a href="#document-structure-links" id="document-structure-resource-relationships" class="headerlink"></a>
 
-The value of a relationship **MUST** be an object (a "relationship object"),
+The value of a relationship **MUST** be a JSON object (a "relationship object"),
 which **MUST** contain at least one of the following:
 
 * A `"links"` member that contains at least one of the following:
@@ -297,17 +294,18 @@ which **MUST** contain at least one of the following:
 * A `"meta"` member that contains non-standard meta-information about the
   relationship.
 
-A relationship object that represents a to-many relationship **MAY** also contain
+Relationships may be to-one or to-many; to-many relationships **MAY** contain
 pagination links under the `links` member, as described below.
 
-If a relationship object refers to resource objects included in the same compound
-document, it **MUST** include resource linkage to those resource objects.
+If a relationship object refers to resource objects included in the same
+[compound document], it **MUST** include resource linkage to those
+resource objects.
 
 Resource linkage **MUST** be represented as one of the following:
 
 * `null` for empty to-one relationships.
-* a "linkage object" (defined below) for non-empty to-one relationships.
 * an empty array (`[]`) for empty to-many relationships.
+* a "linkage object" (defined below) for non-empty to-one relationships.
 * an array of linkage objects for non-empty to-many relationships.
 
 A "linkage object" is an object that identifies an individual related resource.
@@ -320,38 +318,53 @@ meta-information about linkage.
 together all of the included resource objects without having to `GET` any
 relationship URLs.
 
-If present, a *related resource URL* **MUST** be a valid URL, even if the
-relationship isn't currently associated with any target resources.
+For example, this article is associated with an `author`
 
-For example, the following article is associated with an `author`:
-
-```javascript
-// ...
+```JSON
 {
-  "type": "articles",
-  "id": "1",
-  "attributes": {
-    "title": "Rails is Omakase"
-  },
-  "relationships": {
-    "author": {
-      "links": {
-        "self": "http://example.com/articles/1/relationships/author",
-        "related": "http://example.com/articles/1/author"
-      },
-      "linkage": { "type": "people", "id": "9" }
+  "data": {
+    "type": "articles",
+    "id": "1",
+    "attributes": {
+      "title": "Rails is Omakase"
+    },
+    "relationships": {
+      "author": {
+        "links": {
+          "self": "http://example.com/articles/1/relationships/author",
+          "related": "http://example.com/articles/1/author"
+        },
+        "linkage": { "type": "people", "id": "9" }
+      }
+    },
+    "links": {
+      "self": "http://example.com/articles/1"
     }
   },
-  "links": {
-    "self": "http://example.com/articles/1"
-  }
+  "included": [
+    {
+      "type": "people",
+      "id": "9",
+      "attributes": {
+        "first-name": "Dan",
+        "last-name": "Gebhardt",
+        "twitter": "dgeb"
+      },
+      "links": {
+        "self": "http://example.com/people/9"
+      }
+    }
+  ]
 }
-// ...
 ```
 
 The `author` relationship includes a URL for the relationship itself (which
 allows the client to change the related author directly), a related resource URL
 to fetch the resource objects, and linkage information.
+
+If present, a *related resource URL* **MUST** be a valid URL, even if the
+relationship isn't currently associated with any target resources. For example,
+an article with no comments may still show a URL to retreieve comments.
 
 #### Resource Links <a href="#document-structure-structure-resource-object-links" id="document-structure-resource-object-links" class="headerlink"></a>
 
@@ -1589,3 +1602,4 @@ An error object **MAY** have the following members:
 [resource relationships]: #document-structure-resource-object-relationships
 [resource links]: #document-structure-resource-object-links
 [fields]: #document-structure-resource-object-fields
+[compound document]: document-structure-compound-documents
